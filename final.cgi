@@ -1,26 +1,14 @@
 #!E:\PythonP\Python3.13\python.exe
 
+import os
+import sys
+import re
 import mysql.connector as sq_con
-def find_error():
-    print("Content-Type: text/html\r\n\r\n")
-    print("<h1>500 Server Error</h1>")
-    print("<p>Произошла ошибка. Администратор уведомлен.</p>")
-try:
-    import os
-    import sys
-    import re
-    import logging
-    from datetime import datetime
-    from urllib.parse import parse_qs
-    from http import cookies
-    from jinja2 import Environment, FileSystemLoader
-    import html
-    def escape_html(text):
-        return html.escape(str(text))
-    # По какой-то причине test.cgi не хочет импортировать database.propert
-    # поэтому я просто запихнул класс сюда
-
-    class SQL_con():
+from http import cookies
+from urllib.parse import parse_qs
+from datetime import datetime, timedelta
+from jinja2 import Environment, FileSystemLoader
+class SQL_con():
         config = {
             'host': 'localhost',       # Адрес сервера БД
             'user': 'root',          # Имя пользователя
@@ -64,49 +52,33 @@ try:
                     ''')
             conn.commit()
             conn.close()
-    #os.environ получает инфу о переменных окружениях
-    method = os.environ.get('REQUEST_METHOD', '')
-    sys.stdout.reconfigure(encoding='utf-8')
-    if method=="GET":
+
+def main():
+    if method=='GET':
         cookie = cookies.SimpleCookie()
-        try:
+        if 'HTTP_COOKIE' in os.environ:
             cookie.load(os.environ['HTTP_COOKIE'])
-        except:
-            ...
-        if len(cookie)<=1:
-            print("Status: 200 OK\r")
-            print("Content-Type: text/html; charset=UTF-8\n")
-            env = Environment(
-                loader=FileSystemLoader('.'),  # Ищем шаблоны в текущей директории
-                autoescape=True                # Автоматическое экранирование HTML
-                ) 
-            template = env.get_template('index.html')
-            output = template.render(**cookie)
-            print(output)
-        else:
-            env = Environment(
-                loader=FileSystemLoader('.'),  # Ищем шаблоны в текущей директории
-                autoescape=True                # Автоматическое экранирование HTML
-                ) 
-            template = env.get_template('index.html')
-            output = template.render(**cookie)
-            print("Content-Type: text/html; charset=utf-8")
-            print(cookie.output())
-            print()
-            print(output)
+        env = Environment(
+            loader=FileSystemLoader('.'),  # Ищем шаблоны в текущей директории
+        )
+        template = env.get_template('index.html')
+        output = template.render(**cookie)
+        #Выводим страницу
+        print("Status: 200 OK")
+        print("Content-Type: text/html; charset=utf-8")
+        print()  # Пустая строка между заголовками и телом
+        print(output)
     elif method=="POST":
-        cookie = cookies.SimpleCookie()
-        try:
-            cookie.load(os.environ['HTTP_COOKIE'])
-        except:
-            ...
         content_length = int(os.environ.get('CONTENT_LENGTH', 0))
         post_data = sys.stdin.read(content_length)
         new_data = parse_qs(post_data)
         
         #Валидация
         errors = {}
+
+        #Поля для вставки
         fields = {}
+
         #Имя
         try:
             fio = new_data['field-fio'][0]
@@ -129,9 +101,7 @@ try:
             errors['er_email'] = "Поле email не может быть пустым"
             fields["email"] = ""
 
-
         #ЯП
-
         try:
             languages = new_data["languages"]
             fields["languages"] = languages 
@@ -140,7 +110,6 @@ try:
             fields["languages"] = "" 
 
         #Дата рождения
-
         try:
             birth_date = datetime.strptime(new_data['field-birthday'][0], '%Y-%m-%d').date()
             fields["birth_date"] = birth_date
@@ -153,7 +122,7 @@ try:
             errors['er_birth_date'] = 'Поле даты не может быть пустым'
             fields["birth_date"] = " "
 
-        #телефон
+        #Телефон
         try:
             phone = new_data['field-tel'][0]
             fields["phone"] = phone
@@ -165,13 +134,12 @@ try:
             errors["er_phone"] = "Поле email не может быть пустым"
             fields["phone"] = ""
 
-
         #Cогласие
         try:
             if not new_data["check-1"]:
                 errors['er_contract_agreed'] = "Ознакомьтесь с контрактом для отправки"
         except:
-           errors['er_contract_agreed'] = "Ознакомьтесь с контрактом для отправки" 
+            errors['er_contract_agreed'] = "Ознакомьтесь с контрактом для отправки" 
 
         #Пол
         gender = new_data["radio-group-1"][0]
@@ -182,42 +150,56 @@ try:
         except:
             bio = ""
         fields["bio"] = bio
+
+        #Подключаем печеньки
+        cookie = cookies.SimpleCookie()
+        if 'HTTP_COOKIE' in os.environ:
+            cookie.load(os.environ['HTTP_COOKIE'])
         
+        #Проверка на ошибки
         if errors:
-            
+            for field, error in fields.items():
+                try:
+                    del cookie["er_"+field]
+                except Exception as e:
+                    ...
+            expires = datetime.now() + timedelta(days=365)
             for field, error in errors.items():
                 cookie[field] = error
             for field, value in fields.items():
                 if field != 'contract_agreed':
-                    cookie[field] = escape_html(value)
-                if field == "languages":
-                    cookie[field] = ''.join(value)
-
-            print("Status: 200 OK\r")
-            print(cookie.output())
-            print("Content-Type: text/html; charset=UTF-8\r\n\r\n")
-
+                    if field != "languages":
+                        cookie[field] = value
+                    else:
+                        cookie[field] = ''.join(value)
+                    cookie[field]['expires'] = expires.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
             env = Environment(
-                loader=FileSystemLoader('.'),  # Ищем шаблоны в текущей директории
-                autoescape=True                # Автоматическое экранирование HTML
-                ) 
+            loader=FileSystemLoader('.'),  # Ищем шаблоны в текущей директории
+            )
             template = env.get_template('index.html')
             output = template.render(**cookie)
+            for field, error in errors.items():
+                del cookie[field]
+            #Выводим страницу
+            print("Status: 200 OK")
+            print("Content-Type: text/html; charset=utf-8")
+            print(cookie.output())  # Печатаем заголовки Set-Cookie
+            print()  # Пустая строка между заголовками и телом
             print(output)
         else:
+            expires = datetime.now() + timedelta(days=365)
+            for field, error in fields.items():
+                try:
+                    del cookie["er_"+field]
+                except Exception as e:
+                    ...
             for field, value in fields.items():
                 if field != 'contract_agreed':
-                    cookie[field] = escape_html(value)
-                    cookie[field]['max-age'] = 365 * 24 * 60 * 60
-                    cookie[field]["path"] = "/"
-                if field == "languages":
-                    cookie[field] = ''.join(value)
-                    cookie[field]['max-age'] = 365 * 24 * 60 * 60
-                    cookie[field]["path"] = "/"
-            # Очищаем ошибки (если были)
-            for field in errors.keys():
-                cookie[field] = ''
-                cookie[field]['expires'] = 0
+                    if field != "languages":
+                        cookie[field] = value
+                    else:
+                        cookie[field] = ''.join(value)
+                    cookie[field]['expires'] = expires.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
             #Переделываем данные
             new_data = {
                     "fio": fio,
@@ -235,50 +217,27 @@ try:
                 phrase = "Форма успешно отправлена"
             else:
                 phrase = "Вы уже отправляли форму"
-
-            print("Status: 200 OK\r")
-            print(cookie.output())
-            print("Content-Type: text/html\r\n\r\n")
-            Success_html = f'''
-    <head>
-    <meta charset="UTF-8">
-    <link href="static/styles.css" rel="stylesheet" type="text/css"/>
-    <title> Дом Баззиков </title>
-    </head>
-    <body>
-    <header>
-    <div class = "title_block">
-        <a href="test.cgi">
-            <img class = "img-header" src="static/hyperbuzz_pin.png"/>
-        </a>
-        <h1> ДОМ БАЗЗИЛ </h1>
-    </div>
-    <nav>
-        <div class = "a-1"><a href = "#">О сайте</a></div>
-        <div class = "a-2"><a href = "#">Добавить статью</a></div>
-        <div class = "a-3"> <a href = "#">Тех поддежка</a></div>
-    </nav>
-    </header>
-    <div class="main_block">
-    <form id = "tablo">
-    <label>{phrase}</label>
-    </form>
-    </div>
-    <footer>
-    <p> Ковязин Кирилл (c)</p>
-    </footer>
-    </body> 
-            '''
-            print(Success_html)
+            print("Status: 200 OK")
+            print("Content-Type: text/html; charset=utf-8")
+            print(cookie.output())  # Печатаем заголовки Set-Cookie
+            print()
+            env = Environment(
+                loader=FileSystemLoader('.'),  # Ищем шаблоны в текущей директории
+            )
+            template = env.get_template('index.html')
+            output = template.render(**cookie, mess = phrase)
+            print(output)
     else:
-        print("Status: 404 Not Found\r")
-        print("Content-Type: text/html\r\n\r\n")
+        print("Status: 404 Not Found")
+        print("Content-Type: text/html; charset=utf-8")
         print("Wrong url (Change url to '/' pls)")
+method = os.environ.get('REQUEST_METHOD', '')
+sys.stdout.reconfigure(encoding='utf-8')
+try:
+    main()
 except Exception as e:
     error_msg = f"Critical error: {e}"
     file = open("logs.txt", "w")
     file.write(error_msg)
     file.close()
-    print("Content-Type: text/html\r\n\r\n")
-    print("<h1>500 Server Error</h1>")
-    print("<p>Произошла ошибка. Администратор уведомлен.</p>")
+

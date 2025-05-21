@@ -9,7 +9,7 @@
 <body>
     <header>
         <div class="title_block">
-            <a href="/test.cgi">
+            <a href="final.cgi">
                 <img class="img-header" src="static/hyperbuzz_pin.png" />
             </a>
             <h1> ДОМ БАЗЗИЛ </h1>
@@ -21,8 +21,9 @@
         </nav>
     </header>
     <div class="main_block">
-        <form id="tablo" action="test.cgi" method="post">
+        <form id="tablo" action="final.cgi" method="post">
             <!-- 1 -->
+             <label>{% if mess %} {{mess}} {% endif %} </label><br>
             <label>
                 ФИО:<br />
                 {% if er_fio %}
